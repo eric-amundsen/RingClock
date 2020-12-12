@@ -2,6 +2,12 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <Adafruit_NeoPixel.h>
+#include <Wire.h>
+#include <DS3231.h>
+
+RTClib myRTC;
+
+#define PIN_NUMBER 6
 
 //////////////////////////////////////////////////////////////////////
 // The LED class simply holds the state of the LED, on or off
@@ -112,10 +118,13 @@ class RingClock : public Adafruit_NeoPixel {
     Ring      minRing;
     Ring      secRing;
     Ring      tickRing;
+
+    unsigned long timeNow;
 };
 
 RingClock::RingClock(uint32_t colors[4]) :
-    Adafruit_NeoPixel(60, 6, NEO_GRBW + NEO_KHZ800),
+    // Adafruit_NeoPixel(uint16_t n, uint16_t pin=6, neoPixelType type=NEO_GRB + NEO_KHZ800);
+    Adafruit_NeoPixel(60, PIN_NUMBER, NEO_GRBW + NEO_KHZ800),
     hourRing(colors[0]),
     minRing(numLEDs, colors[1]),
     secRing(numLEDs, colors[2]),
@@ -130,6 +139,7 @@ void RingClock::setTime(int hour, int min, int sec) {
   hourRing.setOnly((hour % 12) * 5);
   minRing.setOnly(min);
   secRing.setOnly(sec);
+  timeNow = millis();
 }
 
 void RingClock::incrTime() {
@@ -156,7 +166,9 @@ void RingClock::tick() {
 // once the counter has reached the number of LEDs in the ring,
 // increment time
 int RingClock::tickDelay(int delayBy, int cntr) {
-  delay(delayBy);
+  while(millis() < (timeNow + delayBy)) {
+    delay(1);
+  }
   if (cntr == 0) {
     incrTime();
     cntr = numLEDs;
@@ -164,27 +176,66 @@ int RingClock::tickDelay(int delayBy, int cntr) {
     cntr--;
   }
   tick();
+  timeNow = millis();
   return cntr;
 }
 
-RingClock *rc;
+RingClock *g_rc;
 
-void setup() {
-  uint32_t colors[4];
-  colors[0] = Adafruit_NeoPixel::Color(150,   0,   0);      // hour
-  colors[1] = Adafruit_NeoPixel::Color(  0, 150,   0);      // min
-  colors[2] = Adafruit_NeoPixel::Color(153,   0, 153);      // sec
-  colors[3] = Adafruit_NeoPixel::Color(  0,   0,   0,  50); // tick
-  rc = new RingClock(colors);
-  rc->setTime(9, 44, 0);
+void updateTime(RingClock * rc)
+{
+  DateTime now = myRTC.now();
+  rc->setTime(now.hour(), now.minute(), 0); //now.second());
 }
 
-int loopCounter = 0;
+void setup() {
+
+  uint32_t colors[4];
+  colors[0] = Adafruit_NeoPixel::Color(  0, 155,   0);      // hour
+  colors[1] = Adafruit_NeoPixel::Color(200, 100,   0);      // min
+  colors[2] = Adafruit_NeoPixel::Color(155,   0, 155);      // sec
+  colors[3] = Adafruit_NeoPixel::Color(  0,   0,   0,  50); // tick
+  g_rc = new RingClock(colors);
+
+  Wire.begin();
+  updateTime(g_rc);
+}
+
+int g_loopCounter = 0;
+int g_secCounter = 0;
 void loop() {
-  loopCounter = rc->tickDelay(15, loopCounter);
+  if (g_loopCounter < 30) {
+    g_loopCounter = g_rc->tickDelay(14, g_loopCounter);
+  } else {
+    g_loopCounter = g_rc->tickDelay(13, g_loopCounter);
+  }
+
+  if (!g_loopCounter) {
+    g_secCounter++;
+  }
+
+  if (g_secCounter >= 300) {
+    updateTime(g_rc);
+    g_secCounter = 0;
+  }
 }
 
 #if 0
+    if (sec >= 60) {
+      sec = 0;
+      DateTime now = myRTC.now();
+      Serial.print("Loop counter : ");
+      Serial.print(loopCounter, DEC);
+      Serial.print("  real minutes : ");
+      Serial.print(now.minute(), DEC);
+      Serial.print("  real seconds : ");
+      Serial.print(now.second(), DEC);
+      Serial.print("  calc seconds : ");
+      Serial.print(sec, DEC);
+      Serial.println();
+    } else {
+      sec++;
+    }
 time_t now()
 {
   return (time(NULL));
