@@ -5,9 +5,17 @@
 #include <Wire.h>
 #include <DS3231.h>
 
-RTClib myRTC;
+/*
+ * DEFINES
+ */
+#define NEO_RING_PIN_NUMBER 6
+#define PUSH_BUTTON_PIN_NUMBER 1
 
-#define PIN_NUMBER 6
+/*
+ * types
+ */
+typedef enum states {S0, S1, S2};
+
 
 //////////////////////////////////////////////////////////////////////
 // The LED class simply holds the state of the LED, on or off
@@ -124,7 +132,7 @@ class RingClock : public Adafruit_NeoPixel {
 
 RingClock::RingClock(uint32_t colors[4]) :
     // Adafruit_NeoPixel(uint16_t n, uint16_t pin=6, neoPixelType type=NEO_GRB + NEO_KHZ800);
-    Adafruit_NeoPixel(60, PIN_NUMBER, NEO_GRBW + NEO_KHZ800),
+    Adafruit_NeoPixel(60, NEO_RING_PIN_NUMBER, NEO_GRBW + NEO_KHZ800),
     hourRing(colors[0]),
     minRing(numLEDs, colors[1]),
     secRing(numLEDs, colors[2]),
@@ -180,12 +188,60 @@ int RingClock::tickDelay(int delayBy, int cntr) {
   return cntr;
 }
 
-RingClock *g_rc;
+/*
+ * GLOBALS
+ */
+RingClock *g_rc; // derived from Adafruit_NeoPixel - main class that does all the heavy lifting
+RTClib myRTC; // real time clock object
+int g_hourOffset; // pushbutton can increment hour by one
+states state = S0; // used to find falling edge of button
 
 void updateTime(RingClock * rc)
 {
   DateTime now = myRTC.now();
-  rc->setTime(now.hour(), now.minute(), 0); //now.second());
+  int hour = now.hour();
+  if (hour > 12) {
+    hour -= 12;
+  }
+  int min = now.minute();
+  int sec = now.second();
+
+  // when updating the time, set seconds to 0, otherwise the ticker
+  // doesn't "hit" the seconds and bump it
+  rc->setTime(hour + g_hourOffset, now.minute(), 0); //now.second());
+}
+
+// detect a depressed button being released, upon release increment the g_hourOffset
+int buttonState(int button) {
+
+  // return value, only true upon release of the button
+  int rv = 0;
+
+  // normally in S0, once button pressed move to S1, once button released
+  // move to S2 which increments g_hourOffset, returns true, and goes back to S0
+  switch (state) {
+    case S0 : if (digitalRead(button) == 0) { // The button is pressed
+                state = S1;
+              }
+              break;
+              
+    case S1 : if (digitalRead(button) == 1) { // The button is released
+                state = S2;
+              }
+              break;
+
+    case S2 : g_hourOffset++;
+              if (g_hourOffset > 12) {
+                g_hourOffset = 0;
+              }
+              state = S0;
+              rv = 1;
+              break;
+
+    default : state = S0;
+              break;
+  }
+  return (rv);
 }
 
 void setup() {
@@ -199,10 +255,15 @@ void setup() {
 
   Wire.begin();
   updateTime(g_rc);
+
+  // used to advance the hour
+  pinMode(PUSH_BUTTON_PIN_NUMBER, INPUT);
+
 }
 
 int g_loopCounter = 0;
 int g_secCounter = 0;
+
 void loop() {
   if (g_loopCounter < 30) {
     g_loopCounter = g_rc->tickDelay(14, g_loopCounter);
@@ -214,39 +275,14 @@ void loop() {
     g_secCounter++;
   }
 
+  // every 5 minutes query the RTC and update the time
   if (g_secCounter >= 300) {
     updateTime(g_rc);
     g_secCounter = 0;
   }
-}
 
-#if 0
-    if (sec >= 60) {
-      sec = 0;
-      DateTime now = myRTC.now();
-      Serial.print("Loop counter : ");
-      Serial.print(loopCounter, DEC);
-      Serial.print("  real minutes : ");
-      Serial.print(now.minute(), DEC);
-      Serial.print("  real seconds : ");
-      Serial.print(now.second(), DEC);
-      Serial.print("  calc seconds : ");
-      Serial.print(sec, DEC);
-      Serial.println();
-    } else {
-      sec++;
-    }
-time_t now()
-{
-  return (time(NULL));
+  // check the button, if pressed update the time
+  if (buttonState(PUSH_BUTTON_PIN_NUMBER)) {
+    updateTime(g_rc);
+  }
 }
-
-void updateTime(RingClock * rc)
-{
-  time_t current_time;
-  struct tm * time_ptr;
-  current_time = now();
-  time_ptr = localtime(&current_time);
-  rc->setTime(time_ptr->tm_hour, time_ptr->tm_min, time_ptr->tm_sec);
-}
-#endif
