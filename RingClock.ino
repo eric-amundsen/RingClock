@@ -247,10 +247,10 @@ int buttonState(int button) {
 void setup() {
 
   uint32_t colors[4];
-  colors[0] = Adafruit_NeoPixel::Color(  0, 155,   0);      // hour
-  colors[1] = Adafruit_NeoPixel::Color(200, 100,   0);      // min
-  colors[2] = Adafruit_NeoPixel::Color(155,   0, 155);      // sec
-  colors[3] = Adafruit_NeoPixel::Color(  0,   0,   0,  50); // tick
+  colors[0] = Adafruit_NeoPixel::Color(  0,  15,   0);      // hour
+  colors[1] = Adafruit_NeoPixel::Color( 20,  10,   0);      // min
+  colors[2] = Adafruit_NeoPixel::Color( 16,   0,  16);      // sec
+  colors[3] = Adafruit_NeoPixel::Color(  0,   0,   0,   5); // tick
   g_rc = new RingClock(colors);
 
   Wire.begin();
